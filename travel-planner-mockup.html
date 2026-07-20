@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🤖 智能个人旅游一站式规划师</title>
+<style>
+  :root {
+    --bg: #F8F9FA;
+    --sidebar-bg: #1E1F22;
+    --text-primary: #1A1A1A;
+    --text-secondary: #606266;
+    --brand-primary: #4F46E5;
+    --border-color: #E4E7ED;
+    --canvas-w: 1440px;
+    --canvas-h: 1024px;
+    --sidebar-w: 280px;
+    --main-w: 1160px;
+    --topbar-h: 64px;
+    --agent-a: #F59E0B;
+    --agent-b: #3B82F6;
+    --agent-c: #10B981;
+    --agent-d: #4F46E5;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #E8EAED;
+    display: flex; justify-content: center; align-items: center;
+    width: 100vw; height: 100vh; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  }
+
+  .canvas {
+    width: 100vw; max-width: 1440px; height: 100vh; max-height: 1024px;
+    display: flex; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+  }
+
+  /* ===== Sidebar ===== */
+  .sidebar {
+    width: var(--sidebar-w); height: 100%;
+    background: var(--sidebar-bg); display: flex; flex-direction: column;
+    padding: 24px; gap: 12px; flex-shrink: 0;
+  }
+  .sidebar-title { font-size: 16px; font-weight: 700; color: #FFF; margin-bottom: 4px; }
+  .history-item { border-radius: 8px; padding: 10px 12px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
+  .history-item.active { background: #2B2D31; color: #FFF; }
+  .history-item:not(.active) { background: transparent; color: #9499A4; }
+  .history-item:not(.active):hover { background: #2B2D31; color: #CCC; }
+
+  /* ===== Main Panel ===== */
+  .main-panel {
+    flex: 1; height: 100%;
+    background: var(--bg); display: flex; flex-direction: column;
+    position: relative; overflow: hidden;
+  }
+  .topbar {
+    height: var(--topbar-h); display: flex; align-items: center; padding: 0 32px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 18px; font-weight: 700; color: var(--text-primary);
+    flex-shrink: 0; background: #FFF;
+  }
+
+  /* ===== Chat Area ===== */
+  .chat-area {
+    flex: 1; overflow-y: auto; padding: 28px 32px;
+    display: flex; flex-direction: column; gap: 20px;
+    transition: opacity 200ms ease;
+  }
+  .chat-area.dimmed { opacity: 0.3; pointer-events: none; }
+  .chat-area::-webkit-scrollbar { width: 4px; }
+  .chat-area::-webkit-scrollbar-thumb { background: #D0D5DD; border-radius: 2px; }
+
+  .bubble-user {
+    align-self: flex-end; max-width: 480px;
+    background: var(--brand-primary); color: #FFF;
+    font-size: 14px; padding: 12px 18px;
+    border-radius: 12px 12px 0 12px; line-height: 1.6;
+  }
+  .bubble-ai {
+    align-self: flex-start; max-width: 620px;
+    background: #FFF; color: var(--text-primary);
+    font-size: 14px; padding: 14px 18px;
+    border-radius: 12px 12px 12px 0;
+    border: 1px solid var(--border-color); line-height: 1.7;
+  }
+
+  .options-container { align-self: flex-start; display: flex; gap: 16px; flex-wrap: wrap; }
+  .option-btn {
+    border-radius: 8px; background: #FFF;
+    border: 1.5px solid var(--border-color);
+    padding: 10px 20px; font-size: 13px; cursor: pointer;
+    transition: all 300ms ease-out; white-space: nowrap; color: var(--text-secondary);
+  }
+  .option-btn.recommended { border-color: var(--brand-primary); color: var(--brand-primary); font-weight: 700; }
+  .option-btn:not(.recommended):hover { border-color: #B0B8C9; }
+  .option-btn.solid-active { background: var(--brand-primary); border-color: var(--brand-primary); color: #FFF; font-weight: 700; }
+
+  /* ================================================================ */
+  /*  DASHBOARD OVERLAY — covers chat area                            */
+  /* ================================================================ */
+  .dashboard-overlay {
+    position: absolute; top: var(--topbar-h); left: 0; right: 0; bottom: 0;
+    background: var(--bg); z-index: 10;
+    display: flex; flex-direction: column;
+    transform: translateY(101%);
+    transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .dashboard-overlay.visible { transform: translateY(0); }
+
+  /* Dashboard header */
+  .dash-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 28px;
+    background: #FFF; border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+  }
+  .dash-back-btn {
+    display: flex; align-items: center; gap: 4px;
+    background: none; border: 1.5px solid var(--border-color);
+    border-radius: 8px; padding: 6px 14px;
+    font-size: 13px; cursor: pointer; color: var(--text-secondary);
+    transition: all 200ms ease;
+  }
+  .dash-back-btn:hover { border-color: var(--brand-primary); color: var(--brand-primary); }
+  .dash-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+
+  /* Agent pipeline pill row */
+  .dash-pipeline {
+    display: flex; align-items: center; gap: 4px; margin-left: auto;
+    font-size: 11px; color: var(--text-secondary);
+  }
+  .pipe-agent { padding: 3px 8px; border-radius: 12px; font-weight: 600; font-size: 11px; }
+  .pipe-agent.a { background: #FFFBEB; color: #B45309; }
+  .pipe-agent.b { background: #EFF6FF; color: #1D4ED8; }
+  .pipe-agent.c { background: #ECFDF5; color: #047857; }
+  .pipe-agent.d { background: #EEF2FF; color: #4338CA; }
+  .pipe-arrow { color: #CBD5E1; font-size: 12px; }
+  .pipe-check { color: var(--success); font-size: 10px; }
+
+  /* Dashboard scrollable body */
+  .dash-body {
+    flex: 1; overflow-y: auto; padding: 20px 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 16px;
+  }
+  .dash-body::-webkit-scrollbar { width: 4px; }
+  .dash-body::-webkit-scrollbar-thumb { background: #D0D5DD; border-radius: 2px; }
+
+  /* ===== Agent Card ===== */
+  .agent-card {
+    background: #FFF; border-radius: 10px;
+    border: 1px solid var(--border-color);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .agent-card-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #F0F1F3;
+    flex-shrink: 0;
+  }
+  .agent-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .agent-dot.a { background: var(--agent-a); }
+  .agent-dot.b { background: var(--agent-b); }
+  .agent-dot.c { background: var(--agent-c); }
+  .agent-dot.d { background: var(--agent-d); }
+  .agent-card-label { font-weight: 600; font-size: 11px; color: var(--text-secondary); letter-spacing: 0.5px; text-transform: uppercase; }
+  .agent-card-title { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .agent-card-status { margin-left: auto; font-size: 10px; display: flex; align-items: center; gap: 3px; }
+
+  .agent-card-body { padding: 10px 14px; flex: 1; }
+
+  /* Card A: Weather */
+  .weather-row { display: flex; gap: 8px; }
+  .weather-day {
+    flex: 1; text-align: center; padding: 8px 4px;
+    border-radius: 8px; background: #FFFBEB; border: 1px solid #FDE68A;
+  }
+  .weather-day .icon { font-size: 22px; }
+  .weather-day .temp { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .weather-day .desc { font-size: 10px; color: var(--text-secondary); }
+  .weather-day .uv { font-size: 9px; color: #B45309; font-weight: 600; }
+  .advice-line {
+    margin-top: 8px; font-size: 11px; color: #92400E; line-height: 1.5;
+    padding: 8px 10px; background: #FFF7ED; border-radius: 6px;
+    border-left: 3px solid var(--agent-a);
+  }
+  .advice-line strong { color: #B45309; }
+
+  /* Card B: Transport */
+  .route-summary {
+    display: flex; gap: 16px; font-size: 11px; color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .route-summary strong { color: var(--text-primary); }
+  .route-line {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 0; font-size: 11px;
+    border-bottom: 1px dashed #F0F1F3;
+  }
+  .route-line:last-child { border-bottom: none; }
+  .route-day-tag {
+    background: #EFF6FF; color: #1D4ED8; font-weight: 700; font-size: 10px;
+    padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+  }
+  .route-path-text { color: var(--text-primary); flex: 1; line-height: 1.4; }
+  .route-cost-tag { color: #1D4ED8; font-weight: 600; font-size: 11px; white-space: nowrap; }
+  .route-meta-text { color: var(--text-secondary); font-size: 10px; }
+
+  /* Card C: Food & Hotel */
+  .fh-grid { display: flex; gap: 10px; }
+  .fh-col { flex: 1; }
+  .fh-col-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); margin-bottom: 6px; }
+  .fh-item {
+    background: #F8FAFC; border-radius: 6px; padding: 8px 10px;
+    margin-bottom: 6px; border: 1px solid #F0F1F3;
+  }
+  .fh-item-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px; }
+  .fh-item-name { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+  .fh-item-stars { font-size: 10px; color: #F59E0B; font-weight: 700; white-space: nowrap; }
+  .fh-item-info { font-size: 10px; color: var(--text-secondary); line-height: 1.4; }
+  .fh-item-tags { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 3px; }
+  .fh-tag { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: #ECFDF5; color: #047857; }
+  .fh-item-price { font-size: 11px; font-weight: 700; color: var(--brand-primary); margin-top: 3px; }
+  .filter-note {
+    font-size: 9px; color: #B0B8C9; margin-top: 4px;
+    display: flex; align-items: center; gap: 3px;
+  }
+
+  /* Card D: Budget */
+  .budget-mini-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .budget-mini-table th {
+    text-align: left; padding: 5px 8px; background: #F8FAFC;
+    color: var(--text-secondary); font-weight: 600; font-size: 10px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .budget-mini-table td { padding: 5px 8px; border-bottom: 1px solid #F0F1F3; }
+  .budget-mini-table .status-ok { color: var(--success); font-weight: 700; text-align: center; }
+  .budget-mini-table .status-warn { color: var(--warning); font-weight: 700; text-align: center; }
+  .budget-mini-table .total-row { font-weight: 700; background: #FAFBFC; }
+  .budget-mini-table .total-row td { font-size: 12px; }
+  .budget-footer {
+    margin-top: 8px; padding: 8px 10px; border-radius: 6px;
+    font-size: 11px; line-height: 1.5;
+    display: flex; gap: 6px;
+  }
+  .budget-footer.safe { background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; }
+  .budget-footer.danger { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+  .budget-footer.warn { background: #FFFBEB; color: #92400E; border: 1px solid #FDE68A; }
+
+  /* ===== Bottom Input Bar ===== */
+  .input-bar {
+    padding: 10px 0 14px; display: flex; flex-direction: column;
+    align-items: center; gap: 10px; flex-shrink: 0;
+    background: #FFF; border-top: 1px solid var(--border-color);
+  }
+  .suggestion-chips { display: flex; gap: 8px; }
+  .suggestion-chip {
+    padding: 5px 14px; border-radius: 16px; background: #F0F1FF;
+    border: 1px solid transparent; color: var(--brand-primary);
+    font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 200ms ease-out;
+  }
+  .suggestion-chip:hover { background: #E0E2FF; border-color: #C7CBFD; }
+  .input-row {
+    display: flex; align-items: center; width: min(800px, 70vw); height: 48px;
+    border-radius: 24px; background: #FFF; border: 1.5px solid var(--border-color);
+    padding: 0 6px 0 16px; transition: border-color 200ms ease, box-shadow 200ms ease;
+  }
+  .input-row:focus-within { border-color: var(--brand-primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.10); }
+  .input-action-btn {
+    width: 34px; height: 34px; border-radius: 50%; background: transparent;
+    border: none; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0; color: #8B909A; transition: all 200ms ease-out;
+  }
+  .input-action-btn:hover { background: #F0F1F3; color: var(--text-secondary); }
+  .input-action-btn svg { width: 18px; height: 18px; }
+  .input-field {
+    flex: 1; height: 100%; border: none; outline: none;
+    background: transparent; font-size: 14px; color: var(--text-primary);
+    padding: 0 8px; font-family: inherit;
+  }
+  .input-field::placeholder { color: #C0C4CC; }
+  .input-divider { width: 1px; height: 22px; background: #E8EAED; margin: 0 4px; }
+  .send-btn {
+    width: 34px; height: 34px; border-radius: 50%; background: var(--brand-primary);
+    border: none; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0; transition: all 200ms ease-out;
+  }
+  .send-btn:hover { background: #4338CA; transform: scale(1.05); }
+  .send-btn:active { transform: scale(0.96); }
+  .send-btn svg { width: 16px; height: 16px; fill: #FFF; }
+  .input-disclaimer { font-size: 11px; color: #B0B8C9; text-align: center; }
+
+</style>
+</head>
+<body>
+
+<div class="canvas">
+
+  <!-- ===== Sidebar ===== -->
+  <aside class="sidebar">
+    <div class="sidebar-title">历史记录</div>
+    <div class="history-item active">🔍 北京3日游规划</div>
+    <div class="history-item">🔍 西安美食路线</div>
+    <div class="history-item">🔍 三亚躺平度假</div>
+  </aside>
+
+  <!-- ===== Main Panel ===== -->
+  <main class="main-panel">
+
+    <header class="topbar">🤖 智能个人旅游一站式规划师</header>
+
+    <!-- Chat Area -->
+    <section class="chat-area" id="chatArea">
+      <div class="bubble-user">我想下周去北京玩3天，预算3000元。</div>
+      <div class="bubble-ai">
+        没问题！我已经为您量身定制了以下三个不同方向的旅行预案。请点击下方按钮查看对应方案的详细行程与财务核算：
+      </div>
+      <div class="options-container" id="optionsContainer">
+        <button class="option-btn recommended" id="btnPlan1" onclick="openDashboard(1)">方案一：特种兵拉满游 ⚡️</button>
+        <button class="option-btn" id="btnPlan2" onclick="openDashboard(2)">方案二：历史文化深度游 🏯</button>
+        <button class="option-btn" id="btnPlan3" onclick="openDashboard(3)">方案三：京味美食躺平游 🥢</button>
+      </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!--  DASHBOARD OVERLAY — Plan 1: 特种兵                               -->
+    <!-- ================================================================ -->
+    <div class="dashboard-overlay" id="dash1">
+      <div class="dash-header">
+        <button class="dash-back-btn" onclick="closeDashboard()">← 返回对话</button>
+        <span class="dash-title">方案一：特种兵拉满游 ⚡️</span>
+        <div class="dash-pipeline">
+          <span class="pipe-agent a">🌤️天气A</span><span class="pipe-check">✓</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent b">🚇交通B</span><span class="pipe-check">✓</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent c">🍜美食C</span><span class="pipe-check">✓</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent d">💰预算D</span><span class="pipe-check">✓</span>
+          <span style="margin-left:12px;color:#10B981;font-weight:600;">预算健康</span>
+        </div>
+      </div>
+      <div class="dash-body">
+
+        <!-- A: 天气 -->
+        <div class="agent-card">
+          <div class="agent-card-header">
+            <span class="agent-dot a"></span>
+            <span class="agent-card-label">Agent A</span>
+            <span class="agent-card-title">🌤️ 天气与穿衣指数</span>
+            <span class="agent-card-status" style="color:#10B981;">✓</span>
+          </div>
+          <div class="agent-card-body">
+            <div class="weather-row">
+              <div class="weather-day"><div class="icon">☀️</div><div class="temp">22° / 10°</div><div class="desc">Day1 · 晴</div><div class="uv">UV: 强</div></div>
+              <div class="weather-day"><div class="icon">⛅</div><div class="temp">18° / 8°</div><div class="desc">Day2 · 多云</div><div class="uv">UV: 中等</div></div>
+              <div class="weather-day"><div class="icon">🌧️</div><div class="temp">15° / 6°</div><div class="desc">Day3 · 小雨</div><div class="uv">UV: 弱</div></div>
+            </div>
+            <div class="advice-line">
+              <strong>🧥</strong> 早晚温差大（最大12°C），建议<strong>叠穿</strong>（短袖+薄外套+防风夹克）。Day3 带<strong>折叠伞</strong>。长城风大戴帽子。鞋子穿<strong>防滑运动鞋</strong>（日均步行 &gt;25000步）。
+            </div>
+          </div>
+        </div>
+
+        <!-- B: 交通 -->
+        <div class="agent-card">
+          <div class="agent-card-header">
+            <span class="agent-dot b"></span>
+            <span class="agent-card-label">Agent B</span>
+            <span class="agent-card-title">🚇 交通与路线规划</span>
+            <span class="agent-card-status" style="color:#10B981;">✓ 已优化</span>
+          </div>
+          <div class="agent-card-body">
+            <div class="route-summary">
+              <span>🚇 <strong>地铁+步行</strong></span>
+              <span>⏱️ 日均 <strong>~95分钟</strong></span>
+              <span>💰 总预算 <strong>¥720</strong></span>
+            </div>
+            <div class="route-line">
+              <span class="route-day-tag">Day1</span>
+              <span class="route-path-text">酒店 → 故宫 → 景山公园 → 南锣鼓巷+什刹海</span>
+              <span class="route-cost-tag">¥240</span>
+            </div>
+            <div class="route-meta-text" style="margin-left:48px;margin-bottom:3px;">🚇 地铁1号线→2号线 · ≈80分钟 · 按地理位置就近排序</div>
+            <div class="route-line">
+              <span class="route-day-tag">Day2</span>
+              <span class="route-path-text">酒店 → 天安门升旗 → 八达岭长城 → 鸟巢·水立方</span>
+              <span class="route-cost-tag">¥240</span>
+            </div>
+            <div class="route-meta-text" style="margin-left:48px;margin-bottom:3px;">🚌 旅游大巴+地铁 · ≈180分钟（含长城往返）</div>
+            <div class="route-line">
+              <span class="route-day-tag">Day3</span>
+              <span class="route-path-text">酒店 → 颐和园 → 圆明园 → 三里屯太古里</span>
+              <span class="route-cost-tag">¥240</span>
+            </div>
+            <div class="route-meta-text" style="margin-left:48px;">🚇 地铁4号线→10号线 · ≈90分钟</div>
+          </div>
+        </div>
+
+        <!-- C: 美食住宿 -->
+        <div class="agent-card">
+          <div class="agent-card-header">
+            <span class="agent-dot c"></span>
+            <span class="agent-card-label">Agent C</span>
+            <span class="agent-card-title">🍜 美食与住宿推荐</span>
+            <span class="agent-card-status" style="color:#10B981;">✓ 已匹配</span>
+          </div>
+          <div class="agent-card-body">
+            <div class="fh-grid">
+              <div class="fh-col">
+                <div class="fh-col-label">🏨 住宿</div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">秋果酒店·王府井店</span><span class="fh-item-stars">⭐4.7</span></div>
+                  <div class="fh-item-info">东城区 · 距地铁200m · 好评率94%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">交通便利</span><span class="fh-tag">高性价比</span></div>
+                  <div class="fh-item-price">¥320/晚 ×2 = ¥640</div>
+                </div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">胡同民宿·南锣鼓巷</span><span class="fh-item-stars">⭐4.5</span></div>
+                  <div class="fh-item-info">胡同体验 · 好评率91%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">京味体验</span></div>
+                  <div class="fh-item-price">¥220/晚 ×2 = ¥440</div>
+                </div>
+              </div>
+              <div class="fh-col">
+                <div class="fh-col-label">🍽️ 美食</div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">大董烤鸭（王府井）</span><span class="fh-item-stars">⭐4.8</span></div>
+                  <div class="fh-item-info">人均¥150 · 差评率3%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">必吃榜</span></div>
+                  <div class="fh-item-price">3人 ≈¥450</div>
+                </div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">聚宝源涮肉（牛街）</span><span class="fh-item-stars">⭐4.6</span></div>
+                  <div class="fh-item-info">人均¥90 · 差评率8%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">老字号</span></div>
+                  <div class="fh-item-price">3人 ≈¥270</div>
+                </div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">梧桐小馆（三里屯）</span><span class="fh-item-stars">⭐4.4</span></div>
+                  <div class="fh-item-info">人均¥65 · 差评率12%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">小资</span></div>
+                  <div class="fh-item-price">3人 ≈¥195</div>
+                </div>
+              </div>
+            </div>
+            <div class="filter-note">🔍 过滤: 评分≥4.3 · 差评率≤15% · 人均≤预算 · 按偏好+好评率排序</div>
+          </div>
+        </div>
+
+        <!-- D: 预算 -->
+        <div class="agent-card">
+          <div class="agent-card-header">
+            <span class="agent-dot d"></span>
+            <span class="agent-card-label">Agent D</span>
+            <span class="agent-card-title">💰 财务预算账单</span>
+            <span class="agent-card-status" style="color:#10B981;">✓ 盈余 ¥430</span>
+          </div>
+          <div class="agent-card-body">
+            <table class="budget-mini-table">
+              <thead><tr><th>项目</th><th>预算</th><th>预估</th><th style="text-align:center;">状态</th></tr></thead>
+              <tbody>
+                <tr><td>🚇 交通</td><td>¥800</td><td>¥720</td><td class="status-ok">✓</td></tr>
+                <tr><td>🏨 住宿</td><td>¥900</td><td>¥640</td><td class="status-ok">✓</td></tr>
+                <tr><td>🎫 门票</td><td>¥500</td><td>¥480</td><td class="status-ok">✓</td></tr>
+                <tr><td>🍽️ 餐饮</td><td>¥600</td><td>¥550</td><td class="status-ok">✓</td></tr>
+                <tr><td>📦 其他</td><td>¥200</td><td>¥180</td><td class="status-ok">✓</td></tr>
+                <tr class="total-row"><td>📊 合计</td><td>¥3,000</td><td>¥2,570</td><td class="status-ok">✓</td></tr>
+              </tbody>
+            </table>
+            <div class="budget-footer safe">
+              <span>✅</span>
+              <div><strong>预算健康 · 剩余 ¥430（14.3%）</strong><br>💡 可用余量升级 Day3 晚餐，或带北京特产（稻香村糕点 ≈¥80）</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!--  DASHBOARD OVERLAY — Plan 2: 历史文化                             -->
+    <!-- ================================================================ -->
+    <div class="dashboard-overlay" id="dash2">
+      <div class="dash-header">
+        <button class="dash-back-btn" onclick="closeDashboard()">← 返回对话</button>
+        <span class="dash-title">方案二：历史文化深度游 🏯</span>
+        <div class="dash-pipeline">
+          <span class="pipe-agent a">🌤️天气A</span><span class="pipe-check">✓</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent b">🚇交通B</span><span class="pipe-check">✓</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent c">🍜美食C</span><span class="pipe-check">⚠️</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent d">💰预算D</span><span class="pipe-check">⚠️</span>
+          <span style="margin-left:12px;color:#F59E0B;font-weight:600;">已触发降档</span>
+        </div>
+      </div>
+      <div class="dash-body">
+
+        <div class="agent-card">
+          <div class="agent-card-header"><span class="agent-dot a"></span><span class="agent-card-label">Agent A</span><span class="agent-card-title">🌤️ 天气与穿衣指数</span><span class="agent-card-status" style="color:#10B981;">✓</span></div>
+          <div class="agent-card-body">
+            <div class="weather-row">
+              <div class="weather-day"><div class="icon">☀️</div><div class="temp">22°/10°</div><div class="desc">Day1·晴</div><div class="uv">UV:强</div></div>
+              <div class="weather-day"><div class="icon">⛅</div><div class="temp">18°/8°</div><div class="desc">Day2·多云</div><div class="uv">UV:中等</div></div>
+              <div class="weather-day"><div class="icon">🌧️</div><div class="temp">15°/6°</div><div class="desc">Day3·小雨</div><div class="uv">UV:弱</div></div>
+            </div>
+            <div class="advice-line"><strong>🧥</strong> 同方案一。Day3 小雨影响露天遗址参观，务必<strong>携带雨具</strong>。</div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="agent-card-header"><span class="agent-dot b"></span><span class="agent-card-label">Agent B</span><span class="agent-card-title">🚇 交通与路线规划</span><span class="agent-card-status" style="color:#10B981;">✓ 轻松模式</span></div>
+          <div class="agent-card-body">
+            <div class="route-summary"><span>🚇 <strong>地铁+少量打车</strong></span><span>⏱️ 日均 <strong>~70min</strong></span><span>💰 <strong>¥540</strong></span></div>
+            <div class="route-line"><span class="route-day-tag">Day1</span><span class="route-path-text">酒店 → 故宫深度游（钟表馆+珍宝馆）→ 国家博物馆</span><span class="route-cost-tag">¥180</span></div>
+            <div class="route-meta-text" style="margin-left:48px;margin-bottom:3px;">🚇 地铁1号线 · ≈40分钟 · 天安门区域集中</div>
+            <div class="route-line"><span class="route-day-tag">Day2</span><span class="route-path-text">酒店 → 八达岭长城 → 明十三陵（定陵）</span><span class="route-cost-tag">¥180</span></div>
+            <div class="route-meta-text" style="margin-left:48px;margin-bottom:3px;">🚌 旅游专线巴士 · ≈150分钟 · 长城+十三陵顺路</div>
+            <div class="route-line"><span class="route-day-tag">Day3</span><span class="route-path-text">酒店 → 雍和宫 → 孔庙国子监 → 老舍茶馆</span><span class="route-cost-tag">¥180</span></div>
+            <div class="route-meta-text" style="margin-left:48px;">🚇 地铁5号线 · ≈50分钟 · 文化体验动线</div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="agent-card-header"><span class="agent-dot c"></span><span class="agent-card-label">Agent C</span><span class="agent-card-title">🍜 美食与住宿推荐</span><span class="agent-card-status" style="color:#F59E0B;">⚠ 已降档</span></div>
+          <div class="agent-card-body">
+            <div class="fh-grid">
+              <div class="fh-col">
+                <div class="fh-col-label">🏨 住宿（降档20%）</div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">如家精选·前门店</span><span class="fh-item-stars">⭐4.4</span></div>
+                  <div class="fh-item-info">西城区 · 距故宫1.5km · 好评率88%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">位置好</span><span class="fh-tag">干净</span></div>
+                  <div class="fh-item-price">¥180/晚 ×2 = ¥360</div>
+                </div>
+              </div>
+              <div class="fh-col">
+                <div class="fh-col-label">🍽️ 美食（降档25%）</div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">护国寺小吃（总店）</span><span class="fh-item-stars">⭐4.4</span></div>
+                  <div class="fh-item-info">人均¥40 · 差评率12%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">老字号</span><span class="fh-tag">平价</span></div>
+                  <div class="fh-item-price">3人 ≈¥120</div>
+                </div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">姚记炒肝店</span><span class="fh-item-stars">⭐4.3</span></div>
+                  <div class="fh-item-info">人均¥35 · 差评率14%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">接地气</span></div>
+                  <div class="fh-item-price">3人 ≈¥105</div>
+                </div>
+              </div>
+            </div>
+            <div class="filter-note" style="color:#F59E0B;">⚠ 首次超预算 → 自动降档: 餐标×0.75 + 住宿×0.80</div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="agent-card-header"><span class="agent-dot d"></span><span class="agent-card-label">Agent D</span><span class="agent-card-title">💰 财务预算账单</span><span class="agent-card-status" style="color:#F59E0B;">⚠ 紧平衡</span></div>
+          <div class="agent-card-body">
+            <table class="budget-mini-table">
+              <thead><tr><th>项目</th><th>预算</th><th>预估</th><th style="text-align:center;">状态</th></tr></thead>
+              <tbody>
+                <tr><td>🚇 交通</td><td>¥800</td><td>¥540</td><td class="status-ok">✓</td></tr>
+                <tr><td>🏨 住宿</td><td>¥900</td><td>¥360</td><td class="status-ok">✓</td></tr>
+                <tr><td>🎫 门票</td><td>¥500</td><td>¥560</td><td class="status-warn">⚠</td></tr>
+                <tr><td>🍽️ 餐饮</td><td>¥600</td><td>¥500</td><td class="status-warn">⚠</td></tr>
+                <tr><td>📦 其他</td><td>¥200</td><td>¥240</td><td class="status-warn">⚠</td></tr>
+                <tr class="total-row"><td>📊 合计</td><td>¥3,000</td><td>¥2,200</td><td class="status-ok" style="color:#10B981;">✓</td></tr>
+              </tbody>
+            </table>
+            <div class="budget-footer warn">
+              <span>⚠️</span>
+              <div>
+                <strong>降档后预算安全 · 剩余 ¥800</strong><br>
+                🔄 Agent D 检测超预算 → Agent C 降档 → Agent B 减打车 → 二次核算通过<br>
+                💡 门票偏高（故宫深度游含钟表馆+珍宝馆 ¥80/人），可选基础票节省
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!--  DASHBOARD OVERLAY — Plan 3: 美食躺平                               -->
+    <!-- ================================================================ -->
+    <div class="dashboard-overlay" id="dash3">
+      <div class="dash-header">
+        <button class="dash-back-btn" onclick="closeDashboard()">← 返回对话</button>
+        <span class="dash-title">方案三：京味美食躺平游 🥢</span>
+        <div class="dash-pipeline">
+          <span class="pipe-agent a">🌤️天气A</span><span class="pipe-check">✓</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent b">🚇交通B</span><span class="pipe-check">✓</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent c">🍜美食C</span><span class="pipe-check">✓</span>
+          <span class="pipe-arrow">→</span>
+          <span class="pipe-agent d">💰预算D</span><span class="pipe-check" style="color:#EF4444;">✗</span>
+          <span style="margin-left:12px;color:#EF4444;font-weight:600;">超预算 — 需调整</span>
+        </div>
+      </div>
+      <div class="dash-body">
+
+        <div class="agent-card">
+          <div class="agent-card-header"><span class="agent-dot a"></span><span class="agent-card-label">Agent A</span><span class="agent-card-title">🌤️ 天气与穿衣指数</span><span class="agent-card-status" style="color:#10B981;">✓</span></div>
+          <div class="agent-card-body">
+            <div class="weather-row">
+              <div class="weather-day"><div class="icon">☀️</div><div class="temp">22°/10°</div><div class="desc">Day1·晴</div><div class="uv">UV:强</div></div>
+              <div class="weather-day"><div class="icon">⛅</div><div class="temp">18°/8°</div><div class="desc">Day2·多云</div><div class="uv">UV:中等</div></div>
+              <div class="weather-day"><div class="icon">🌧️</div><div class="temp">15°/6°</div><div class="desc">Day3·小雨</div><div class="uv">UV:弱</div></div>
+            </div>
+            <div class="advice-line"><strong>🧥</strong> 节奏慢，主要在室内+商场，薄外套即可。Day3 小雨不影响美食探店。</div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="agent-card-header"><span class="agent-dot b"></span><span class="agent-card-label">Agent B</span><span class="agent-card-title">🚇 交通与路线规划</span><span class="agent-card-status" style="color:#10B981;">✓ 轻松模式</span></div>
+          <div class="agent-card-body">
+            <div class="route-summary"><span>🚕 <strong>打车+散步</strong></span><span>⏱️ 日均 <strong>~35min</strong></span><span>💰 <strong>¥405</strong></span></div>
+            <div class="route-line"><span class="route-day-tag">Day1</span><span class="route-path-text">酒店 → 大董烤鸭 → 三里屯逛街 → 下午茶</span><span class="route-cost-tag">¥135</span></div>
+            <div class="route-meta-text" style="margin-left:48px;margin-bottom:3px;">🚕 打车 · ≈30分钟 · 轻松出行</div>
+            <div class="route-line"><span class="route-day-tag">Day2</span><span class="route-path-text">酒店 → 聚宝源涮肉 → 前门大街 → 稻香村</span><span class="route-cost-tag">¥135</span></div>
+            <div class="route-meta-text" style="margin-left:48px;margin-bottom:3px;">🚕 打车 · ≈25分钟 · 美食扫街</div>
+            <div class="route-line"><span class="route-day-tag">Day3</span><span class="route-path-text">酒店 → 护国寺小吃 → TRB Hutong → 簋街 → 精酿酒吧</span><span class="route-cost-tag">¥135</span></div>
+            <div class="route-meta-text" style="margin-left:48px;">🚶 散步+短途打车 · ≈40分钟 · 胡同漫游</div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="agent-card-header"><span class="agent-dot c"></span><span class="agent-card-label">Agent C</span><span class="agent-card-title">🍜 美食与住宿推荐</span><span class="agent-card-status" style="color:#10B981;">✓ 高端匹配</span></div>
+          <div class="agent-card-body">
+            <div class="fh-grid">
+              <div class="fh-col">
+                <div class="fh-col-label">🏨 舒适型住宿</div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">北京康莱德酒店</span><span class="fh-item-stars">⭐4.8</span></div>
+                  <div class="fh-item-info">朝阳区 · 五星级 · 好评率96%</div>
+                  <div class="fh-item-tags"><span class="fh-tag">奢华</span><span class="fh-tag">含早</span></div>
+                  <div class="fh-item-price">¥520/晚 ×2 = ¥1,040</div>
+                </div>
+              </div>
+              <div class="fh-col">
+                <div class="fh-col-label">🍽️ 精致美食</div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">大董烤鸭（工体店）</span><span class="fh-item-stars">⭐4.8</span></div>
+                  <div class="fh-item-info">人均¥180 · 意境菜 · 差评率2%</div>
+                  <div class="fh-item-price">3人 ≈¥540</div>
+                </div>
+                <div class="fh-item">
+                  <div class="fh-item-header"><span class="fh-item-name">TRB Hutong 胡同法餐</span><span class="fh-item-stars">⭐4.7</span></div>
+                  <div class="fh-item-info">人均¥250 · fine dining · 差评率4%</div>
+                  <div class="fh-item-price">3人 ≈¥750</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent-card">
+          <div class="agent-card-header"><span class="agent-dot d"></span><span class="agent-card-label">Agent D</span><span class="agent-card-title">💰 财务预算账单</span><span class="agent-card-status" style="color:#EF4444;">✗ 超预算</span></div>
+          <div class="agent-card-body">
+            <table class="budget-mini-table">
+              <thead><tr><th>项目</th><th>预算</th><th>预估</th><th style="text-align:center;">状态</th></tr></thead>
+              <tbody>
+                <tr><td>🚇 交通</td><td>¥800</td><td>¥405</td><td class="status-ok">✓</td></tr>
+                <tr><td>🏨 住宿</td><td>¥900</td><td>¥1,040</td><td class="status-warn">⚠</td></tr>
+                <tr><td>🎫 门票</td><td>¥500</td><td>¥200</td><td class="status-ok">✓</td></tr>
+                <tr><td>🍽️ 餐饮</td><td>¥600</td><td>¥1,290</td><td class="status-warn">⚠</td></tr>
+                <tr class="total-row"><td>📊 合计</td><td>¥3,000</td><td>¥3,135</td><td class="status-warn" style="color:#EF4444;">✗</td></tr>
+              </tbody>
+            </table>
+            <div class="budget-footer danger">
+              <span>🚫</span>
+              <div>
+                <strong>超出预算 ¥135 — 自动降档中…</strong><br>
+                🔄 <strong>降档策略：</strong> ① C降餐厅：大董→便宜坊(¥80) 省¥300 ② C降酒店：康莱德→秋果(¥320) 省¥400 ③ B减打车：打车→地铁 省¥135<br>
+                📉 <strong>降档后预估 ¥2,300 ✓ 预算内</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ===== Bottom Input Bar ===== -->
+    <div class="input-bar">
+      <div class="suggestion-chips">
+        <span class="suggestion-chip" onclick="fillInput('推荐北京小众景点')">🏛️ 推荐小众景点</span>
+        <span class="suggestion-chip" onclick="fillInput('帮我把预算调整到2000元')">💰 调整预算</span>
+        <span class="suggestion-chip" onclick="fillInput('换一个轻松一点的方案')">🌿 轻松一点</span>
+      </div>
+      <div class="input-row">
+        <button class="input-action-btn" title="上传文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </button>
+        <input type="text" class="input-field" id="chatInput" placeholder="请输入您的旅行目的地或修改意见..." onkeydown="if(event.key==='Enter')sendMessage()" />
+        <button class="input-action-btn" title="语音输入">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <span class="input-divider"></span>
+        <button class="send-btn" onclick="sendMessage()" title="发送">
+          <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
+      </div>
+      <div class="input-disclaimer">⚠️ 内容由 AI 生成，请核实关键信息后使用</div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  let activeDash = null;
+
+  function openDashboard(num) {
+    // Close previous
+    if (activeDash) {
+      document.getElementById('dash' + activeDash).classList.remove('visible');
+      document.getElementById('btnPlan' + activeDash).classList.remove('solid-active');
+    }
+
+    // Reset all buttons
+    ['btnPlan1','btnPlan2','btnPlan3'].forEach(id => {
+      document.getElementById(id).classList.remove('recommended');
+    });
+
+    if (activeDash === num) {
+      // Toggle off
+      document.getElementById('chatArea').classList.remove('dimmed');
+      activeDash = null;
+      document.getElementById('btnPlan1').classList.add('recommended');
+      return;
+    }
+
+    activeDash = num;
+    document.getElementById('dash' + num).classList.add('visible');
+    document.getElementById('btnPlan' + num).classList.add('solid-active');
+    document.getElementById('chatArea').classList.add('dimmed');
+  }
+
+  function closeDashboard() {
+    if (!activeDash) return;
+    document.getElementById('dash' + activeDash).classList.remove('visible');
+    document.getElementById('btnPlan' + activeDash).classList.remove('solid-active');
+    document.getElementById('btnPlan1').classList.add('recommended');
+    document.getElementById('chatArea').classList.remove('dimmed');
+    activeDash = null;
+  }
+
+  function fillInput(text) {
+    document.getElementById('chatInput').value = text;
+    document.getElementById('chatInput').focus();
+  }
+
+  function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const text = input.value.trim();
+    if (!text) return;
+    alert('🚀 模拟发送:\n\n' + text + '\n\n(原型演示 — 未连接后端)');
+    input.value = '';
+    input.focus();
+  }
+</script>
+
+</body>
+</html>
